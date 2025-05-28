@@ -89,6 +89,12 @@ async function run() {
             res.send(result);
         });
 
+        // Get all users
+        app.get('/users', async(req, res)=>{
+            const users = await usersCollection.find().toArray();
+            res.send(users);
+        })
+
         // Health check
         app.get('/', (req, res) => {
             res.send('safePing server is running');
