@@ -9,7 +9,7 @@ const port = process.env.PORT || 5000;
 
 // Middleware
 const corsOptions = {
-    origin: [process.env.URL, 'http://localhost:5174'],
+    origin: [process.env.URL, 'http://localhost:5173'],
     credentials: true,
     optionsSuccessStatus: 200, // fix spelling: "optionSuccessStatus" ➝ "optionsSuccessStatus"
 };
@@ -51,7 +51,6 @@ async function run() {
         // JWT creation endpoint
         app.post('/jwt', async (req, res) => {
             const user = req.body;
-            console.log('Creating JWT for user:', user);
             const token = jwt.sign(user, process.env.ACCESS_TOKEN_SECRET, {
                 expiresIn: '365d',
             });
