@@ -43,10 +43,23 @@ const client = new MongoClient(uri, {
     },
 });
 
+// cache for MongoDB client
+// This is a simple cache to avoid reconnecting to the database on every request.
+let cachedClient = null;
+
+async function connectToDB() {
+    if (cachedClient) return cachedClient;
+    await client.connect();
+    cachedClient = client;
+    return client;
+}
+
+
 async function run() {
     try {
-        await client.connect();
-        const usersCollection = client.db('safePingDB').collection('users');
+        const dbClient = await connectToDB();
+        const usersCollection = dbClient.db('safePingDB').collection('users');
+
 
         // JWT creation endpoint
         app.post('/jwt', async (req, res) => {
@@ -90,15 +103,10 @@ async function run() {
         });
 
         // Get all users
-        app.get('/users', async(req, res)=>{
+        app.get('/users', async (req, res) => {
             const users = await usersCollection.find().toArray();
             res.send(users);
         })
-
-        // Health check
-        app.get('/', (req, res) => {
-            res.send('safePing server is running');
-        });
 
         await client.db("admin").command({ ping: 1 });
         console.log("Successfully connected to MongoDB.");
@@ -109,6 +117,11 @@ async function run() {
     }
 }
 run().catch(console.dir);
+
+// Health check
+app.get('/', (req, res) => {
+    res.send('safePing server is running');
+});
 
 app.listen(port, () => {
     console.log(`🚀 Server is running on http://localhost:${port}`);
