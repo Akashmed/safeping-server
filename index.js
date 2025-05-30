@@ -17,20 +17,7 @@ app.use(cors(corsOptions));
 app.use(express.json());
 app.use(cookieParser());
 
-// JWT verification middleware
-const verifyToken = (req, res, next) => {
-    const token = req.cookies?.token;
-    if (!token) {
-        return res.status(401).send({ message: 'unauthorized access' });
-    }
-    jwt.verify(token, process.env.ACCESS_TOKEN_SECRET, (err, decoded) => {
-        if (err) {
-            return res.status(401).send({ message: 'unauthorized access' });
-        }
-        req.user = decoded;
-        next();
-    });
-};
+
 
 // MongoDB connection URI
 const uri = `mongodb+srv://${process.env.DB_USER}:${process.env.DB_PASS}@cluster0.wwbu2.mongodb.net/?retryWrites=true&w=majority&appName=Cluster0`;
@@ -43,22 +30,27 @@ const client = new MongoClient(uri, {
     },
 });
 
-// cache for MongoDB client
-// This is a simple cache to avoid reconnecting to the database on every request.
-let cachedClient = null;
-
-async function connectToDB() {
-    if (cachedClient) return cachedClient;
-    await client.connect();
-    cachedClient = client;
-    return client;
-}
 
 
 async function run() {
     try {
-        const dbClient = await connectToDB();
-        const usersCollection = dbClient.db('safePingDB').collection('users');
+        await client.connect();
+        const usersCollection = client.db('safePingDB').collection('users');
+
+        // JWT verification middleware
+        const verifyToken = (req, res, next) => {
+            const token = req.cookies?.token;
+            if (!token) {
+                return res.status(401).send({ message: 'unauthorized access' });
+            }
+            jwt.verify(token, process.env.ACCESS_TOKEN_SECRET, (err, decoded) => {
+                if (err) {
+                    return res.status(401).send({ message: 'unauthorized access' });
+                }
+                req.user = decoded;
+                next();
+            });
+        };
 
 
         // JWT creation endpoint
@@ -108,8 +100,30 @@ async function run() {
             res.send(users);
         })
 
-        await client.db("admin").command({ ping: 1 });
-        console.log("Successfully connected to MongoDB.");
+        // Get user by email
+        app.get('/users/:email', verifyToken, async (req, res) => {
+            const email = req.params.email;
+            const query = { email };
+            const user = await usersCollection.findOne(query);
+            if (!user) {
+                return res.status(404).send({ message: 'User not found' });
+            }
+            res.send(user);
+        });
+
+        // update user
+        app.patch('/users/:email', verifyToken, async (req, res) => {
+            const email = req.params.email;
+            const user = req.body;
+            const query = { email };
+            const updateDoc = { $set: user };
+
+            const result = await usersCollection.updateOne(query, updateDoc);
+            res.send(result);
+        });
+
+        // await client.db("admin").command({ ping: 1 });
+        // console.log("Successfully connected to MongoDB.");
     } catch (err) {
         console.error("MongoDB connection failed:", err);
     } finally {
