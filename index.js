@@ -17,6 +17,26 @@ app.use(cors(corsOptions));
 app.use(express.json());
 app.use(cookieParser());
 
+const allowedOrigins = process.env.URL
+    ? process.env.URL.split(',')
+    : ['http://localhost:5173'];
+
+const http = require('http');
+const { Server } = require('socket.io');
+
+const server = http.createServer(app);
+const io = new Server(server, {
+    cors: {
+        origin: (origin, callback) => {
+            if (!origin || allowedOrigins.includes(origin)) {
+                callback(null, true);
+            } else {
+                callback(new Error('Not allowed by CORS'));
+            }
+        },
+        methods: ['GET', 'POST'],
+    },
+});
 
 
 // MongoDB connection URI
@@ -36,6 +56,65 @@ async function run() {
     try {
         await client.connect();
         const usersCollection = client.db('safePingDB').collection('users');
+
+
+        // Socket.io connection
+        const userSocketMap = new Map();
+
+        io.on('connection', (socket) => {
+            console.log('A user connected:', socket.id);
+
+            //Handle institution connection
+            socket.on("institutionConnected", async ({ institutionId }) => {
+                userSocketMap.set(institutionId, {
+                    socketId: socket.id,
+                    activeChatRecipientId: null // Institution is not actively chatting with anyone yet
+                });
+                console.log(`Institution ${institutionId} connected with socket ID: ${socket.id}`);
+            });
+
+            socket.on("userConnected", async ({ userId, institutionId }) => {
+                userSocketMap.set(userId, {
+                    socketId: socket.id,
+                    activeChatRecipientId: institutionId // The user is chatting with this institution
+                });
+                const senderOnline = userSocketMap.get(userId);
+                const helperOnline = userSocketMap.get(institutionId);
+
+                if (helperOnline) {
+                    io.to(helperOnline.socketId).emit('helpRequest', { userId, time: new Date() });
+                }
+
+                // if (helperOnline && senderOnline) {
+                //     io.to(senderOnline.socketId).emit('userOnline', { userId });
+                // };
+
+                // if (helperOnline && senderOnline) {
+                //     io.to(helperOnline.socketId).emit('userOnline', { userId });
+                // };
+
+                try {
+                    //mongodb integration
+                } catch (error) {
+                    console.error("Error handling undelivered messages:", error);
+                }
+            });
+
+            socket.on('helpAccepted', async ({ userId, institutionId }) => {
+                const userData = userSocketMap.get(userId);
+                if (userData) {
+                    io.to(userData.socketId).emit('helpAccepted', { institutionId, time: new Date() });
+                }
+            });
+
+
+
+            socket.on("clientDisconnected", ({ clientId }) => {
+                userSocketMap.delete(clientId);
+                io.emit("userOffline", { clientId });
+            });
+
+        });
 
         // JWT verification middleware
         const verifyToken = (req, res, next) => {
