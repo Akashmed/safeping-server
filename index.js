@@ -107,6 +107,15 @@ async function run() {
                 }
             });
 
+            socket.on('joinTrackingRoom', ({ sessionId }) => {
+                socket.join(sessionId);
+                console.log(`${socket.id} joined room ${sessionId}`);
+            });
+
+            socket.on('locationUpdate', ({ sessionId, senderType, coords }) => {
+                // Broadcast to everyone else in the same room
+                socket.to(sessionId).emit('locationUpdate', { senderType, coords });
+            });
 
 
             socket.on("clientDisconnected", ({ clientId }) => {
@@ -216,6 +225,7 @@ app.get('/', (req, res) => {
     res.send('safePing server is running');
 });
 
-app.listen(port, () => {
+server.listen(port, () => {
     console.log(`🚀 Server is running on http://localhost:${port}`);
 });
+
